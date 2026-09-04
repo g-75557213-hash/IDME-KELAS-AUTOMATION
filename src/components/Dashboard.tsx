@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { AppState, ParsedResult, AttendanceConstants } from '../types';
 import { processLocalText, processWithGeminiAI, generateIdMEScript } from '../lib/engine';
-import { Zap, Bot, Edit2, Play, CheckCircle2, AlertCircle } from 'lucide-react';
+import { fetchSheetCSV } from '../lib/sheets';
+import { Zap, Bot, Edit2, Play, CheckCircle2, AlertCircle, Database, Calendar } from 'lucide-react';
 
 interface DashboardProps {
   state: AppState;
@@ -9,30 +10,48 @@ interface DashboardProps {
   openConfig: () => void;
 }
 
+const MONTHS = ['Januari', 'Februari', 'Mac', 'April', 'Mei', 'Jun', 'Julai', 'Ogos', 'September', 'Oktober', 'November', 'Disember'];
+
 export function Dashboard({ state, updateState, openConfig }: DashboardProps) {
   const [inputText, setInputText] = useState('');
+  const [selectedMonth, setSelectedMonth] = useState<string>('');
+  const [useSpreadsheet, setUseSpreadsheet] = useState(true);
   const [results, setResults] = useState<ParsedResult[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  const handleProcessLocal = () => {
-    if (!inputText.trim()) return;
+  const resolveSourceText = async (): Promise<string> => {
+    if (useSpreadsheet) {
+      if (!selectedMonth) throw new Error("Sila pilih bulan untuk diproses.");
+      const url = state.spreadsheets[selectedMonth];
+      if (!url) throw new Error(`Tiada URL Spreadsheet ditetapkan untuk bulan ${selectedMonth}. Sila tetapkan di Panel Admin.`);
+      return await fetchSheetCSV(url);
+    }
+    if (!inputText.trim()) throw new Error("Sila masukkan teks WhatsApp untuk diproses.");
+    return inputText;
+  };
+
+  const handleProcessLocal = async () => {
     setError(null);
+    setIsProcessing(true);
     try {
-      const data = processLocalText(inputText, state);
+      const sourceText = await resolveSourceText();
+      const data = processLocalText(sourceText, state);
       setResults(data);
     } catch (err: any) {
       setError(err.message);
+    } finally {
+      setIsProcessing(false);
     }
   };
 
   const handleProcessGemini = async () => {
-    if (!inputText.trim()) return;
-    setIsProcessing(true);
     setError(null);
+    setIsProcessing(true);
     try {
-      const data = await processWithGeminiAI(inputText, state);
+      const sourceText = await resolveSourceText();
+      const data = await processWithGeminiAI(sourceText, state);
       setResults(data);
     } catch (err: any) {
       setError(err.message);
@@ -57,20 +76,61 @@ export function Dashboard({ state, updateState, openConfig }: DashboardProps) {
       {/* Main Input Area */}
       <div className="bg-white rounded-xl shadow-sm border p-6">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-bold text-gray-800">Main Input Area</h2>
+          <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+            <Database className="w-5 h-5 text-indigo-600" /> Sumber Data Kehadiran
+          </h2>
           <div className="flex gap-2">
              <button onClick={openConfig} className="text-sm px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg font-medium hover:bg-blue-100 flex items-center gap-2">
-               🎓 Modul Belajar
+               🎓 Modul Belajar & Admin
              </button>
           </div>
         </div>
         
-        <textarea
-          className="w-full h-40 p-4 border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none resize-none font-sans text-gray-800 mb-4 bg-gray-50"
-          placeholder="Paste WhatsApp text here..."
-          value={inputText}
-          onChange={e => setInputText(e.target.value)}
-        ></textarea>
+        <div className="flex gap-4 mb-4 border-b pb-2">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input 
+              type="radio" 
+              checked={useSpreadsheet} 
+              onChange={() => setUseSpreadsheet(true)}
+              className="w-4 h-4 text-indigo-600"
+            />
+            <span className="font-medium text-gray-700">Guna Google Spreadsheet (Disyorkan)</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input 
+              type="radio" 
+              checked={!useSpreadsheet} 
+              onChange={() => setUseSpreadsheet(false)}
+              className="w-4 h-4 text-indigo-600"
+            />
+            <span className="font-medium text-gray-700">Guna Teks Manual</span>
+          </label>
+        </div>
+
+        {useSpreadsheet ? (
+          <div className="mb-4 bg-indigo-50/50 p-4 rounded-xl border border-indigo-100">
+            <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-indigo-600" /> Pilih Bulan Untuk Diproses
+            </label>
+            <select
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 font-medium text-gray-800 bg-white"
+            >
+              <option value="">-- Sila Pilih Bulan --</option>
+              {MONTHS.map(m => (
+                <option key={m} value={m}>{m} {state.spreadsheets[m] ? '(URL Telah Ditetapkan)' : '(URL Kosong)'}</option>
+              ))}
+            </select>
+          </div>
+        ) : (
+          <textarea
+            className="w-full h-40 p-4 border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none resize-none font-sans text-gray-800 mb-4 bg-gray-50"
+            placeholder="Paste WhatsApp text here..."
+            value={inputText}
+            onChange={e => setInputText(e.target.value)}
+          ></textarea>
+        )}
 
         {error && (
           <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg flex items-center gap-2 border border-red-100 text-sm">

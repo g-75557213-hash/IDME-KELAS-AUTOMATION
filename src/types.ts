@@ -26,6 +26,7 @@ export interface AppState {
     auto_submit: boolean;
   };
   roster: Student[];
+  spreadsheets: Record<string, string>;
 }
 
 export const DEFAULT_STATE: AppState = {
@@ -35,6 +36,7 @@ export const DEFAULT_STATE: AppState = {
   settings: {
     auto_submit: false
   },
-  roster: []
+  roster: [],
+  spreadsheets: {}
 };
 
