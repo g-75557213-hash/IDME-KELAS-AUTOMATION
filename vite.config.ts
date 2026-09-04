@@ -5,6 +5,7 @@ import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
   return {
+    base: '/IDME-KELAS-AUTOMATION/',
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
